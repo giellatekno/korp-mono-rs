@@ -1,0 +1,16 @@
+[package]
+name = "korp_mono"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.96"
+clap = { version = "4.5.30", features = ["derive"] }
+fst-analysis-parser = { path = "/home/anders/projects/fst-analysis-parser/" }
+itertools = "0.14.0"
+ouroboros = "0.18.5"
+quick-xml = { version = "0.37.2", features = ["serialize"] }
+rayon = "1.10.0"
+serde = { version = "1.0.218", features = ["derive"] }
+tap = "1.0.1"
+walkdir = "2.5.0"
