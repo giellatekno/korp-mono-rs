@@ -1,6 +1,7 @@
 mod analysed;
 mod korp_mono;
 mod parse_year;
+mod process_sentence;
 
 use std::collections::HashMap;
 use std::io::BufWriter;
@@ -8,17 +9,20 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 
 use analysed::path::AnalysedFilePath;
-use itertools::Itertools;
 use clap::Parser;
 use walkdir::WalkDir;
 use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use anyhow::anyhow;
 
-use analysed::file::{ParsedAnalysedDocument, UnparsedAnalysedDocument};
-use korp_mono::file::KorpMonoXmlFile;
 
-/// Simple program to greet a person
+use crate::korp_mono::path::KorpMonoPath;
+use crate::korp_mono::KorpMonoXmlFile;
+use crate::analysed::file::{ParsedAnalysedDocument, UnparsedAnalysedDocument};
+use crate::process_sentence::process_sentence;
+
+/// Turn analysed xml files in the analysed/ directory into vrt xml files
+/// in the korp_mono/ directory.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -201,70 +205,51 @@ fn convert_document(
     Some((path, korp_mono_xml_file))
 }
 
-/// Transform an fst_analysis_parser::Sentence to the string format
-/// needed by the korp_mono file. This format contains each word in the
-/// sentence on its own line. Additionaly, each line contains tab-separated
-/// properties of that word. Such as this:
-///
-/// Sääʹmǩiõl	sääʹmǩiõll	N	N.Pl.Nom	1	SUBJ	3
-/// da	da	CC	CC	2	CNP	1
-/// kulttuur	kulttuur	N	N.Pl.Nom	3	HNOUN	4
-/// jeälltummuš	jeälltummuš	N	N.Sg.Nom	4	HNOUN	0
-pub fn process_sentence(sentence: &fst_analysis_parser::Sentence) -> String {
-    use std::fmt::Write;
-
-    let mut s = String::new();
-    for word in &sentence.words {
-        let analysis_ok = true;
-
-        let word_form = word.tokens.iter().map(|token| token.word_form).join("");
-
-        let mut lemma = "";
-        let mut pos = "___";
-        // which word number this is
-        let mut self_id = 0;
-        // which word number is the "parent" word of this word
-        let mut parent_id = 0;
-        let mut function_label = String::from("X");
-        let mut morpho_syntactic_description = String::from("___");
-
-        for token in word.tokens.iter() {
-            for analysis in token.analyses.0.iter() {
-                if let Some(ref analysis) = analysis.borrow().analysis {
-                    if let Some(func) = analysis.func {
-                        function_label = func
-                            .replace(">", "→")
-                            .as_str()
-                            .replace("<", "←");
-                    }
-                    if let Some((f, t)) = analysis.deprel {
-                        self_id = f;
-                        parent_id = t;
-                    }
-                    lemma = analysis.lemma;
-                    pos = analysis.pos;
-                    morpho_syntactic_description = analysis.tags.join(".");
-                }
+fn write_korpmono_file(
+    status_queue: mpsc::Sender<StatusMessage>,
+    path: AnalysedFilePath,
+    korp_mono_file: KorpMonoXmlFile,
+) -> Option<()> {
+        let output_path = KorpMonoPath::from(&path);
+        match std::fs::create_dir_all(output_path.parent()) {
+            Ok(_) => {}
+            Err(e) => {
+                let msg = StatusMessage::GenericError {
+                    path: path.to_owned(),
+                    error: anyhow!("cannot create dir: {}", e),
+                };
+                q_send_or_panic!(status_queue, msg);
+                return None;
             }
         }
-
-        if analysis_ok {
-            write!(s, "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                word_form,
-                lemma,
-                pos,
-                morpho_syntactic_description, // clean_msd(morpho_syntactic_description, pos),
-                self_id,
-                function_label,
-                parent_id,
-            ).expect("can always write!() to string");
-
-        } else {
-            // saami	saami	___	___	12	X	0
+        let open_result = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(output_path);
+        let file = match open_result {
+            Ok(fp) => fp,
+            Err(e) => {
+                let msg = StatusMessage::GenericError {
+                    path: path.to_owned(),
+                    error: anyhow!("Can't open {:?}: {}", &path, e)
+                };
+                q_send_or_panic!(status_queue, msg);
+                return None;
+            }
+        };
+        let writer = BufWriter::new(file);
+        match quick_xml::se::to_utf8_io_writer(writer, &korp_mono_file) {
+            Ok(_) => {},
+            Err(e) => {
+                let msg = StatusMessage::GenericError {
+                    path: path.to_owned(),
+                    error: anyhow!("Can't write to file {:?}: {}", &path, e),
+                };
+                q_send_or_panic!(status_queue, msg);
+            }
         }
-        s.push_str(&word_form);
-    }
-    s
+        Some(())
 }
 
 fn main() {
@@ -344,8 +329,6 @@ fn main() {
         file_statuses
     });
 
-    use korp_mono::path::KorpMonoPath;
-
     files
         .par_iter()
         .filter_map(|path| read_to_string(tx.clone(), path))
@@ -353,53 +336,14 @@ fn main() {
         .filter_map(|(path, doc)| parse_analyses(tx.clone(), path, doc))
         .filter_map(|(path, doc)| convert_document(tx.clone(), path, doc))
         .filter_map(|(path, korp_mono_file)| {
-            let output_path = KorpMonoPath::from(&path);
-            let queue = tx.clone();
-            match std::fs::create_dir_all(output_path.parent()) {
-                Ok(_) => {}
-                Err(e) => {
-                    let _ = queue.send(StatusMessage::GenericError {
-                        path: path.to_owned(),
-                        error: anyhow!("cannot create dir: {}", e),
-                    });
-                    return None;
-                }
-            }
-            let open_result = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(output_path);
-            let file = match open_result {
-                Ok(fp) => fp,
-                Err(e) => {
-                    let msg = StatusMessage::GenericError {
-                        path: path.to_owned(),
-                        error: anyhow!("Can't open {:?}: {}", &path, e)
-                    };
-                    q_send_or_panic!(queue, msg);
-                    return None;
-                }
-            };
-            let writer = BufWriter::new(file);
-            match quick_xml::se::to_utf8_io_writer(writer, &korp_mono_file) {
-                Ok(_) => {},
-                Err(e) => {
-                    let msg = StatusMessage::GenericError {
-                        path: path.to_owned(),
-                        error: anyhow!("Can't write to file {:?}: {}", &path, e),
-                    };
-                    q_send_or_panic!(queue, msg);
-                }
-            }
-            Some(())
+            write_korpmono_file(tx.clone(), path, korp_mono_file)
         })
-        .collect::<Vec<_>>();
+        .for_each(|_| {});
 
-    // Drop the sender, the queue will eventually read Err, indicating that
-    // the queue has been dropped
+    // Drop the sender, to indicate that work is done. When the printer thread
+    // notices that the transmitter is gone, it will break its loop, and stop,
+    // allowing the jh.join() to unblock.
     drop(tx);
-    //q_send_or_panic!(tx, StatusMessage::Done);
     let file_statuses = jh.join().expect("joining printer thread is ok");
 
     // write out all status files

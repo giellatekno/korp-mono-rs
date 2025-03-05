@@ -24,82 +24,47 @@ use serde::Serialize;
 use crate::analysed::file::ParsedAnalysedDocument;
 use crate::parse_year::parse_year;
 
-#[derive(Serialize)]
-pub struct KorpMonoXmlFile {
-    text: Text,
-}
-
+/// The root element of the korp mono xml file. Deliberately using lower case
+/// "t" in "text", so that the element in the final file will be "<text>", and
+/// not "<Text>". Don't know if it matters, but you know.
+#[allow(non_camel_case_types)]
 #[derive(Serialize, Default)]
-struct Text {
+pub struct text {
     #[serde(rename = "@title")]
-    title: Option<String>,
+    pub title: Option<String>,
     #[serde(rename = "@lang")]
-    lang: Option<String>,
+    pub lang: Option<String>,
     #[serde(rename = "@orig_lang")]
-    orig_lang: Option<String>,
+    pub orig_lang: Option<String>,
     #[serde(rename = "@first_name")]
-    first_name: Option<String>,
+    pub first_name: Option<String>,
     #[serde(rename = "@last_name")]
-    last_name: Option<String>,
+    pub last_name: Option<String>,
     #[serde(rename = "@nationality")]
-    nationality: Option<String>,
+    pub nationality: Option<String>,
     #[serde(rename = "@gt_domain")]
-    gt_domain: Option<String>,
+    pub gt_domain: Option<String>,
     #[serde(rename = "@date")]
-    date: Option<String>,
+    pub date: Option<String>,
     #[serde(rename = "@datefrom")]
-    datefrom: Option<String>,
+    pub datefrom: Option<String>,
     #[serde(rename = "@dateto")]
-    dateto: Option<String>,
+    pub dateto: Option<String>,
     #[serde(rename = "@timefrom")]
-    timefrom: Option<String>,
+    pub timefrom: Option<String>,
     #[serde(rename = "@timeto")]
-    timeto: Option<String>,
+    pub timeto: Option<String>,
 
-    sentences: Vec<Sentence>,
-}
-
-impl Text {
-    fn new(
-        sentences: Vec<Sentence>,
-        title: Option<String>,
-        lang: Option<String>,
-        orig_lang: Option<String>,
-        first_name: Option<String>,
-        last_name: Option<String>,
-        nationality: Option<String>,
-        gt_domain: Option<String>,
-        date: Option<String>,
-        datefrom: Option<String>,
-        dateto: Option<String>,
-        timefrom: Option<String>,
-        timeto: Option<String>,
-    ) -> Self {
-        Self {
-            sentences,
-            title,
-            lang,
-            orig_lang,
-            first_name,
-            last_name,
-            nationality,
-            gt_domain,
-            date,
-            datefrom,
-            dateto,
-            timefrom,
-            timeto,
-        }
-    }
+    //#[serde(flatten)]
+    pub sentence: Vec<Sentence>,
 }
 
 #[derive(Serialize)]
-struct Sentence {
-    // FIXME int?
+pub struct Sentence {
     #[serde(rename = "@id")]
-    id: String,
+    pub id: String,
     #[serde(rename = "$text")]
-    text: String,
+    pub text: String,
 }
 
 impl Sentence {
@@ -109,7 +74,7 @@ impl Sentence {
 }
 
 /// How a ParsedAnalysedDocument is turned into a KorpMonoXmlFile
-impl From<ParsedAnalysedDocument> for KorpMonoXmlFile {
+impl From<ParsedAnalysedDocument> for text {
     fn from(doc: ParsedAnalysedDocument) -> Self {
         let gt_domain = match doc.header.genre {
             Some(genre) => {
@@ -171,7 +136,10 @@ impl From<ParsedAnalysedDocument> for KorpMonoXmlFile {
         };
 
         use crate::process_sentence;
-        let sentences = doc.body.with_sentences(|sentences| {
+        // HERE is how Vec<fst_analysis_parser::Sentence> gets turned into
+        // the string
+        // sentences: &Option<Vec<fst_analysis_parser::Sentence>>
+        let sentence = doc.body.with_sentences(|sentences| {
             match sentences {
                 None => vec![],
                 Some(vec) => {
@@ -184,7 +152,7 @@ impl From<ParsedAnalysedDocument> for KorpMonoXmlFile {
                 }
             }
         });
-        let text = Text {
+        Self {
             title: doc.header.title,
             lang: doc.lang,
             orig_lang: doc.header.translated_from,
@@ -197,8 +165,7 @@ impl From<ParsedAnalysedDocument> for KorpMonoXmlFile {
             dateto: Some(dateto),
             timefrom: Some("000000".to_string()),
             timeto: Some("235959".to_string()),
-            sentences, 
-        };
-        Self { text }
+            sentence, 
+        }
     }
 }
