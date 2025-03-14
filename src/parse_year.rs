@@ -47,13 +47,11 @@ pub fn parse_year(year: Option<&str>) -> (String, String, String) {
         Some(year) => {
             match year.as_bytes() {
                 // yyyy
-                [a, b, c, d] if are_digits!(a, b, c, d) => {
-                    (
-                        format!("{year}-01-01"),
-                        format!("{year}0101"),
-                        format!("{year}0101"),
-                    )
-                }
+                [a, b, c, d] if are_digits!(a, b, c, d) => (
+                    format!("{year}-01-01"),
+                    format!("{year}0101"),
+                    format!("{year}0101"),
+                ),
                 // yyyy-yyyy
                 [a, b, c, d, DASH, e, f, g, h] if are_digits!(a, b, c, d, e, f, g, h) => {
                     let year_from = &year[0..4];
@@ -74,7 +72,7 @@ pub fn parse_year(year: Option<&str>) -> (String, String, String) {
                     let mmu: u8 = unsafe { mm.parse().unwrap_unchecked() };
                     match (ddu, mmu) {
                         // "00" as day or month is invalid
-                        (0, _) | (_, 0) => zero_output!(), 
+                        (0, _) | (_, 0) => zero_output!(),
                         (1..=12, 1..=12) => {
                             // both between 01 and 12, so assume the sane
                             // choice of dd.mm.yyyy (sorry freedom-lovers)
@@ -84,27 +82,23 @@ pub fn parse_year(year: Option<&str>) -> (String, String, String) {
                                 format!("{year}{mm}{dd}"),
                             )
                         }
-                        (1..=12, 1..=31) => {
-                            (
-                                format!("{year}-{dd}-{mm}"),
-                                format!("{year}{dd}{mm}"),
-                                format!("{year}{dd}{mm}"),
-                            )
-                        }
-                        (1..=31, 1..=12) => {
-                            (
-                                format!("{year}-{mm}-{dd}"),
-                                format!("{year}{mm}{dd}"),
-                                format!("{year}{mm}{dd}"),
-                            )
-                        }
+                        (1..=12, 1..=31) => (
+                            format!("{year}-{dd}-{mm}"),
+                            format!("{year}{dd}{mm}"),
+                            format!("{year}{dd}{mm}"),
+                        ),
+                        (1..=31, 1..=12) => (
+                            format!("{year}-{mm}-{dd}"),
+                            format!("{year}{mm}{dd}"),
+                            format!("{year}{mm}{dd}"),
+                        ),
                         (_, _) => {
                             // invalid date: both over 12, or otherwise
                             zero_output!()
                         }
                     }
                 }
-                _=> zero_output!(),
+                _ => zero_output!(),
             }
         }
     }
@@ -130,7 +124,9 @@ mod tests {
             ("02.02.2025", "2025-02-02", "20250202", "20250202"),
             ("15.02.2025", "2025-02-15", "20250215", "20250215"),
             ("02.15.2025", "2025-02-15", "20250215", "20250215"),
-        ].iter().for_each(|(input, out1, out2, out3)| {
+        ]
+        .iter()
+        .for_each(|(input, out1, out2, out3)| {
             let out = parse_year(Some(input));
             assert_eq!(
                 (out.0.as_str(), out.1.as_str(), out.2.as_str()),
@@ -150,8 +146,10 @@ mod tests {
             "999-2000",
             "05.32.2000",
             "32.05.2000",
-            "06.06.999"
-        ].iter().for_each(|input| {
+            "06.06.999",
+        ]
+        .iter()
+        .for_each(|input| {
             let out = parse_year(Some(input));
             assert_eq!(
                 (out.0.as_str(), out.1.as_str(), out.2.as_str()),

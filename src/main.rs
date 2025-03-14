@@ -6,19 +6,18 @@ mod process_sentence;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use analysed::path::AnalysedFilePath;
-use clap::Parser;
-use walkdir::WalkDir;
-use std::time::{Duration, Instant};
-use rayon::prelude::*;
 use anyhow::anyhow;
+use clap::Parser;
+use rayon::prelude::*;
+use std::time::{Duration, Instant};
+use walkdir::WalkDir;
 
-
-use crate::korp_mono::path::KorpMonoPath;
-use crate::korp_mono::KorpMonoXmlFile;
 use crate::analysed::file::{ParsedAnalysedDocument, UnparsedAnalysedDocument};
+use crate::korp_mono::KorpMonoXmlFile;
+use crate::korp_mono::path::KorpMonoPath;
 use crate::process_sentence::process_sentence;
 
 /// Turn analysed xml files in the analysed/ directory into vrt xml files
@@ -54,37 +53,43 @@ fn collect_files(p: PathBuf) -> Vec<AnalysedFilePath> {
 #[derive(Debug)]
 enum StatusMessage {
     /// File was read to a string in memory
-    Read { path: AnalysedFilePath, result: Result<Duration, std::io::Error> },
+    Read {
+        path: AnalysedFilePath,
+        result: Result<Duration, std::io::Error>,
+    },
     /// String was parsed into an xml tree
-    ParseXml { path: AnalysedFilePath, result: Result<Duration, quick_xml::DeError> },
+    ParseXml {
+        path: AnalysedFilePath,
+        result: Result<Duration, quick_xml::DeError>,
+    },
     /// The giella-cg analysis text was parsed (by fst_analysis_parser)
-    ParseAnalyses { path: AnalysedFilePath, result: Result<Duration, Vec<String>> },
+    ParseAnalyses {
+        path: AnalysedFilePath,
+        result: Result<Duration, Vec<String>>,
+    },
     /// Some other error, which we don't particularly care to specify, but
     /// still need to track
-    GenericError { path: AnalysedFilePath, error: anyhow::Error }
+    GenericError {
+        path: AnalysedFilePath,
+        error: anyhow::Error,
+    },
 }
 
 impl std::fmt::Display for StatusMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Read { path: _, result } => {
-                match result {
-                    Ok(dur) => write!(f, "Read file in {dur:?}"),
-                    Err(io_err) => write!(f, "Unable to read: {io_err}"),
-                }
-            }
-            Self::ParseXml { path: _, result } => {
-                match result {
-                    Ok(dur) => write!(f, "Parsed XML in {dur:?}"),
-                    Err(de_err) => write!(f, "XML parse error: {de_err}"),
-                }
-            }
-            Self::ParseAnalyses { path: _, result } => {
-                match result {
-                    Ok(dur) => write!(f, "Parsed analyses in {dur:?}"),
-                    Err(de_err) => write!(f, "Parse analysis: {de_err:?}"),
-                }
-            }
+            Self::Read { path: _, result } => match result {
+                Ok(dur) => write!(f, "Read file in {dur:?}"),
+                Err(io_err) => write!(f, "Unable to read: {io_err}"),
+            },
+            Self::ParseXml { path: _, result } => match result {
+                Ok(dur) => write!(f, "Parsed XML in {dur:?}"),
+                Err(de_err) => write!(f, "XML parse error: {de_err}"),
+            },
+            Self::ParseAnalyses { path: _, result } => match result {
+                Ok(dur) => write!(f, "Parsed analyses in {dur:?}"),
+                Err(de_err) => write!(f, "Parse analysis: {de_err:?}"),
+            },
             Self::GenericError { path: _, error } => {
                 write!(f, "Generic error: {error}")
             }
@@ -95,7 +100,7 @@ impl std::fmt::Display for StatusMessage {
 macro_rules! q_send_or_panic {
     ($queue:expr, $msg:expr) => {
         match $queue.send($msg) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => {
                 panic!("can't send message to printer thread");
             }
@@ -164,12 +169,11 @@ fn parse_analyses(
     document: Arc<Mutex<UnparsedAnalysedDocument>>,
 ) -> Option<(AnalysedFilePath, Arc<Mutex<ParsedAnalysedDocument>>)> {
     let t0 = Instant::now();
-    let document = Mutex::into_inner(
-        Arc::into_inner(document)
-            .expect("only 1 thread accesses this arc")
-    ).expect("only 1 thread accesses this mutex");
+    let document =
+        Mutex::into_inner(Arc::into_inner(document).expect("only 1 thread accesses this arc"))
+            .expect("only 1 thread accesses this mutex");
     let res = ParsedAnalysedDocument::try_from(document);
-    let dur = Instant::now().duration_since(t0);
+    let dur = t0.elapsed();
     match res {
         Ok(parsed_analysed_document) => {
             let msg = StatusMessage::ParseAnalyses {
@@ -191,17 +195,16 @@ fn parse_analyses(
 }
 
 fn convert_document(
-    status_queue: mpsc::Sender<StatusMessage>,
+    _status_queue: mpsc::Sender<StatusMessage>,
     path: AnalysedFilePath,
     document: Arc<Mutex<ParsedAnalysedDocument>>,
 ) -> Option<(AnalysedFilePath, KorpMonoXmlFile)> {
     let t0 = Instant::now();
-    let parsed_analysed_document = Mutex::into_inner(
-        Arc::into_inner(document)
-            .expect("only 1 thread accesses this  arc")
-    ).expect("only 1 thread accesses this mutex");
+    let parsed_analysed_document =
+        Mutex::into_inner(Arc::into_inner(document).expect("only 1 thread accesses this arc"))
+            .expect("only 1 thread accesses this mutex");
     let korp_mono_xml_file = KorpMonoXmlFile::from(parsed_analysed_document);
-    let dur = Instant::now().duration_since(t0);
+    let _dur = Instant::now().duration_since(t0);
     Some((path, korp_mono_xml_file))
 }
 
@@ -210,46 +213,46 @@ fn write_korpmono_file(
     path: AnalysedFilePath,
     korp_mono_file: KorpMonoXmlFile,
 ) -> Option<()> {
-        let output_path = KorpMonoPath::from(&path);
-        match std::fs::create_dir_all(output_path.parent()) {
-            Ok(_) => {}
-            Err(e) => {
-                let msg = StatusMessage::GenericError {
-                    path: path.to_owned(),
-                    error: anyhow!("cannot create dir: {}", e),
-                };
-                q_send_or_panic!(status_queue, msg);
-                return None;
-            }
+    let output_path = KorpMonoPath::from(&path);
+    match std::fs::create_dir_all(output_path.parent()) {
+        Ok(_) => {}
+        Err(e) => {
+            let msg = StatusMessage::GenericError {
+                path: path.to_owned(),
+                error: anyhow!("cannot create dir: {}", e),
+            };
+            q_send_or_panic!(status_queue, msg);
+            return None;
         }
-        let open_result = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(output_path);
-        let file = match open_result {
-            Ok(fp) => fp,
-            Err(e) => {
-                let msg = StatusMessage::GenericError {
-                    path: path.to_owned(),
-                    error: anyhow!("Can't open {:?}: {}", &path, e)
-                };
-                q_send_or_panic!(status_queue, msg);
-                return None;
-            }
-        };
-        let writer = BufWriter::new(file);
-        match quick_xml::se::to_utf8_io_writer(writer, &korp_mono_file) {
-            Ok(_) => {},
-            Err(e) => {
-                let msg = StatusMessage::GenericError {
-                    path: path.to_owned(),
-                    error: anyhow!("Can't write to file {:?}: {}", &path, e),
-                };
-                q_send_or_panic!(status_queue, msg);
-            }
+    }
+    let open_result = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(output_path);
+    let file = match open_result {
+        Ok(fp) => fp,
+        Err(e) => {
+            let msg = StatusMessage::GenericError {
+                path: path.to_owned(),
+                error: anyhow!("Can't open {:?}: {}", &path, e),
+            };
+            q_send_or_panic!(status_queue, msg);
+            return None;
         }
-        Some(())
+    };
+    let writer = BufWriter::new(file);
+    match quick_xml::se::to_utf8_io_writer(writer, &korp_mono_file) {
+        Ok(_) => {}
+        Err(e) => {
+            let msg = StatusMessage::GenericError {
+                path: path.to_owned(),
+                error: anyhow!("Can't write to file {:?}: {}", &path, e),
+            };
+            q_send_or_panic!(status_queue, msg);
+        }
+    }
+    Some(())
 }
 
 fn main() {
@@ -261,7 +264,7 @@ fn main() {
         input_dir = dir;
     }
     match AnalysedFilePath::try_from(&input_dir) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             println!("not analysed/ directory of a corpus\ninner:{e}");
         }
@@ -283,7 +286,8 @@ fn main() {
                     let msg_s = format!("{msg}");
                     match msg {
                         StatusMessage::ParseAnalyses { path, .. } => {
-                            file_statuses.entry(path.inner)
+                            file_statuses
+                                .entry(path.inner)
                                 .and_modify(|s| s.push_str(&format!("{msg_s}\n")))
                                 .or_insert_with(|| format!("{msg_s}\n"));
                             nok += 1;
@@ -297,26 +301,29 @@ fn main() {
                             );
                         }
                         StatusMessage::Read { path, result } => {
-                            file_statuses.entry(path.inner)
+                            file_statuses
+                                .entry(path.inner)
                                 .and_modify(|s| s.push_str(&format!("{msg_s}\n")))
                                 .or_insert_with(|| format!("{msg_s}\n"));
 
                             match result {
-                                Ok(_) => {},
+                                Ok(_) => {}
                                 Err(_e) => nerr += 1,
                             }
                         }
                         StatusMessage::ParseXml { path, result } => {
-                            file_statuses.entry(path.inner)
+                            file_statuses
+                                .entry(path.inner)
                                 .and_modify(|s| s.push_str(&format!("{msg_s}\n")))
                                 .or_insert_with(|| format!("{msg_s}\n"));
                             match result {
-                                Ok(_) => {},
+                                Ok(_) => {}
                                 Err(_e) => nerr += 1,
                             }
                         }
                         StatusMessage::GenericError { path, error } => {
-                            file_statuses.entry(path.inner)
+                            file_statuses
+                                .entry(path.inner)
                                 .and_modify(|s| s.push_str(&format!("{msg_s}\n")))
                                 .or_insert_with(|| format!("{msg_s}\n"));
                             println!("{error}, {}", error.backtrace());
@@ -329,15 +336,14 @@ fn main() {
         file_statuses
     });
 
+    println!("korp-mono-rs starting, {nfiles} files to process...");
     files
         .par_iter()
         .filter_map(|path| read_to_string(tx.clone(), path))
         .filter_map(|(path, string)| parse_xml(tx.clone(), path, &string))
         .filter_map(|(path, doc)| parse_analyses(tx.clone(), path, doc))
         .filter_map(|(path, doc)| convert_document(tx.clone(), path, doc))
-        .filter_map(|(path, korp_mono_file)| {
-            write_korpmono_file(tx.clone(), path, korp_mono_file)
-        })
+        .filter_map(|(path, korp_mono_file)| write_korpmono_file(tx.clone(), path, korp_mono_file))
         .for_each(|_| {});
 
     // Drop the sender, to indicate that work is done. When the printer thread

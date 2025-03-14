@@ -5,7 +5,7 @@
 //! Inside it contais `<sentence id="N">`, which contains the transformed
 //! sentence to the cwb format.
 //!
-//! Example: 
+//! Example:
 //!
 //! ```not_rust
 //! <text title="Sääʹmǩiõll da kulttuur jeälltummuš Sääʹm mošttbaŋkk -haʹŋǩǩõõzzâst" lang="sms" orig_lang="" first_name="Marko" last_name="Jouste" nationality="FI" gt_domain="science" date="2018-01-01" datefrom="20180101" dateto="20180101" timefrom="000000" timeto="235959">
@@ -23,6 +23,7 @@ use serde::Serialize;
 
 use crate::analysed::file::ParsedAnalysedDocument;
 use crate::parse_year::parse_year;
+use crate::process_sentence;
 
 /// The root element of the korp mono xml file. Deliberately using lower case
 /// "t" in "text", so that the element in the final file will be "<text>", and
@@ -77,8 +78,8 @@ impl Sentence {
 impl From<ParsedAnalysedDocument> for text {
     fn from(doc: ParsedAnalysedDocument) -> Self {
         let gt_domain = match doc.header.genre {
-            Some(genre) => {
-                Some(match genre.code.as_str() {
+            Some(genre) => Some(
+                match genre.code.as_str() {
                     "admin" | "administration" => "administration",
                     "bible" => "bible",
                     "facta" => "facts",
@@ -91,24 +92,20 @@ impl From<ParsedAnalysedDocument> for text {
                     "blogs" => "blog",
                     "wikipedia" => "wikipedia",
                     _ => "",
-                }.to_string())
-            }
-            None => Some("".to_string())
+                }
+                .to_string(),
+            ),
+            None => Some("".to_string()),
         };
 
-        let (date, datefrom, dateto) = parse_year(
-            doc.header.year.as_deref()
-        );
+        let (date, datefrom, dateto) = parse_year(doc.header.year.as_deref());
 
-        let (first_name, last_name, nationality) =
-        match doc.header.authors {
-            None => {
-                (
-                    Some("".to_string()),
-                    Some("".to_string()),
-                    Some("".to_string()),
-                )
-            }
+        let (first_name, last_name, nationality) = match doc.header.authors {
+            None => (
+                Some("".to_string()),
+                Some("".to_string()),
+                Some("".to_string()),
+            ),
             Some(authors) => {
                 // anders: for now, we just take the first?
                 // what should we do here? there's only one "field"
@@ -127,28 +124,34 @@ impl From<ParsedAnalysedDocument> for text {
                     None => Some("".to_string()),
                 };
 
-                (
-                    firstname,
-                    lastname,
-                    nationality
-                )
+                (firstname, lastname, nationality)
             }
         };
 
-        use crate::process_sentence;
         // HERE is how Vec<fst_analysis_parser::Sentence> gets turned into
         // the string
         // sentences: &Option<Vec<fst_analysis_parser::Sentence>>
-        let sentence = doc.body.with_sentences(|sentences| {
+        let body = doc.body;
+        let sentence = body.with_sentences(|sentences| {
             match sentences {
                 None => vec![],
                 Some(vec) => {
-                    vec
-                        .iter()
-                        .map(|sentence| process_sentence(sentence))
-                        .enumerate()
-                        .map(|(i, string)| Sentence::new(format!("{i}"), string.to_string()))
-                        .collect()
+                    let mut out = vec![];
+                    let mut sentence_id = 1;
+                    for sent in vec.iter() {
+                        let processed = process_sentence(sent);
+                        let sentence_id_str = format!("{sentence_id}");
+                        let s = Sentence::new(sentence_id_str, processed);
+                        out.push(s);
+                        sentence_id += 1;
+                    }
+                    out
+                    //vec
+                    //    .iter()
+                    //    .map(|sentence| process_sentence(sentence))
+                    //    .enumerate()
+                    //    .map(|(i, string)| Sentence::new(format!("{i}"), string.to_string()))
+                    //    .collect()
                 }
             }
         });
@@ -165,7 +168,7 @@ impl From<ParsedAnalysedDocument> for text {
             dateto: Some(dateto),
             timefrom: Some("000000".to_string()),
             timeto: Some("235959".to_string()),
-            sentence, 
+            sentence,
         }
     }
 }

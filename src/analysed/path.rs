@@ -49,7 +49,7 @@ pub fn is_analysed_corpus_dir<P: AsRef<std::path::Path>>(path: P) -> bool {
     for component in path.as_ref().components() {
         if is_corpus_dir(&component) {
             prev_is_corpus_dir = true;
-            continue
+            continue;
         }
 
         let comp = component
@@ -68,7 +68,11 @@ impl TryFrom<&PathBuf> for AnalysedFilePath {
 
     fn try_from(value: &PathBuf) -> Result<Self, Self::Error> {
         is_analysed_corpus_dir(&value)
-            .then(|| Self { inner: value.to_path_buf() })
-            .ok_or(anyhow::anyhow!("'.../corpus-xxx/analysed/...' not found in path'"))
+            .then(|| Self {
+                inner: value.to_path_buf(),
+            })
+            .ok_or(anyhow::anyhow!(
+                "'.../corpus-xxx/analysed/...' not found in path'"
+            ))
     }
 }

@@ -12,7 +12,9 @@ pub struct KorpMonoPath {
 
 impl KorpMonoPath {
     pub fn parent(&self) -> &std::path::Path {
-        self.inner.parent().expect("all korp mono paths has a parent")
+        self.inner
+            .parent()
+            .expect("all korp mono paths has a parent")
     }
 }
 
@@ -37,7 +39,9 @@ impl From<AnalysedFilePath> for KorpMonoPath {
             }
         }
         out.reverse();
-        Self { inner: PathBuf::from_iter(out.iter()) }
+        Self {
+            inner: PathBuf::from_iter(out.iter()),
+        }
     }
 }
 
@@ -62,7 +66,9 @@ impl From<&AnalysedFilePath> for KorpMonoPath {
             }
         }
         out.reverse();
-        Self { inner: PathBuf::from_iter(out.iter()) }
+        Self {
+            inner: PathBuf::from_iter(out.iter()),
+        }
     }
 }
 
@@ -93,4 +99,3 @@ mod tests {
         assert_eq!(KorpMonoPath::from(analysed_path), expected_path);
     }
 }
-

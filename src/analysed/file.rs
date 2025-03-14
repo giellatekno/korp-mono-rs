@@ -112,7 +112,6 @@ pub struct ParallelText {
     pub location: Option<String>,
 }
 
-
 #[derive(Deserialize)]
 pub struct Body {
     pub dependency: String,
@@ -142,22 +141,18 @@ unsafe impl Send for ParsedBody {}
 impl TryFrom<UnparsedAnalysedDocument> for ParsedAnalysedDocument {
     type Error = anyhow::Error;
 
-    fn try_from(value: UnparsedAnalysedDocument)
-        -> Result<Self, Self::Error>
-    {
-        //let dependency: String = value.body.dependency;
-        // FIXME: check _rem
-        //let (_rem, sents) = fst_analysis_parser::parse_sentences(&dependency)?;
-
+    fn try_from(value: UnparsedAnalysedDocument) -> Result<Self, Self::Error> {
         let parsed_body = ParsedBodyBuilder {
             dependency: value.body.dependency,
             sentences_builder: |dep| {
                 let parse_result = fst_analysis_parser::parse_sentences(&dep);
+                // TODO should really check that _rem is empty, to be sure
+                // that the entire <dependency> has been parsed
                 let (_rem, sents) = parse_result.ok()?;
                 Some(sents)
-            }
-        }.build();
-
+            },
+        }
+        .build();
 
         Ok(ParsedAnalysedDocument {
             lang: value.lang,
