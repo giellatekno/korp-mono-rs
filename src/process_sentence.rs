@@ -22,7 +22,7 @@ pub fn process_sentence<'a, 'b>(sentence: &'a fst_analysis_parser::Sentence<'b>)
     let mut s = String::with_capacity(50);
     for word in sentence.words.iter() {
         for token in word.tokens.iter() {
-            let Some(lemma) = token.analyses.get_lemma() else {
+            let Some(lemma) = token.analyses.get_lemma(token.orig) else {
                 continue;
             };
             let mut pos = Pos::Unknown;
@@ -77,6 +77,10 @@ pub fn process_sentence<'a, 'b>(sentence: &'a fst_analysis_parser::Sentence<'b>)
 
 #[cfg(test)]
 mod tests {
+    use fst_analysis_parser::parse_sentences;
+    use super::process_sentence;
+
+    /// A processed line.
     #[derive(Debug, PartialEq, Eq)]
     struct Processed<'a> {
         word_form: &'a str,
@@ -88,6 +92,7 @@ mod tests {
         parent_id: &'a str,
     }
 
+    /// Split an incoming processed line into the fields.
     fn processed_from_str<'a>(s: &'a str) -> Processed<'a> {
         let mut splits = s.split('\t');
         let processed = Processed {
@@ -104,10 +109,15 @@ mod tests {
     }
 
     impl<'a> Processed<'a> {
+        /// Check if this processed line, is equal to some other processed line
         fn is_equal_to(&self, other: &str) {
             let actual = processed_from_str(other);
+            let Some((before, _after)) = actual.lemma.split_once(":::") else {
+                panic!("actual lemma doesn't contain :::");
+            };
+            let actual_lemma = format!("{before}]]]");
             assert_eq!(self.word_form, actual.word_form);
-            assert_eq!(self.lemma, actual.lemma);
+            assert_eq!(self.lemma, actual_lemma);
             assert_eq!(self.pos, actual.pos);
             assert_eq!(self.msd, actual.msd);
             assert_eq!(self.self_id, actual.self_id);
@@ -116,20 +126,8 @@ mod tests {
         }
     }
 
-    use fst_analysis_parser::parse_sentences;
-
-    use super::process_sentence;
-
-    #[test]
-    fn derived() {
-        env_logger::init();
-
-        let input = concat!(
-            "\"<vurkkodanvásttuid>\"\n",
-            "\t\"vástu\" N Sem/Dummytag Pl Acc <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @-F<OBJ #22->19\n",
-            "\t\t\"vurkkodit\" Ex/V TV Gram/3syll Der/NomAct N Cmp/SgNom Cmp <W:0.0> #22->19\n"
-        );
-        let (rest, sentences) = match parse_sentences(&input) {
+    fn test_case(input_text: &str, expected: Processed) {
+        let (rest, sentences) = match parse_sentences(&input_text) {
             Ok((rest, sentences)) => (rest, sentences),
             Err(e) => {
                 // failed to parse input -- this shouldn't happen.
@@ -138,17 +136,142 @@ mod tests {
         };
         assert!(rest.is_empty());
         let first = sentences.first().expect("There is a sentence.");
-
-        let expected = Processed {
-            word_form: "vurkkodanvásttuid",
-            lemma: "[[[GEN:#vurkkodit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#vástu+N+Sg+Nom]]]",
-            pos: "N",
-            msd: "N.Pl.Acc",
-            self_id: "22",
-            func: "-F←OBJ",
-            parent_id: "19\n",
-        };
         let actual = process_sentence(first);
         expected.is_equal_to(&actual);
+    }
+
+    #[test]
+    fn vurkkodanvásttuid() {
+        test_case(
+            concat!(
+                "\"<vurkkodanvásttuid>\"\n",
+                "\t\"vástu\" N Sem/Dummytag Pl Acc <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @-F<OBJ #22->19\n",
+                "\t\t\"vurkkodit\" Ex/V TV Gram/3syll Der/NomAct N Cmp/SgNom Cmp <W:0.0> #22->19\n"
+            ),
+            Processed {
+                word_form: "vurkkodanvásttuid",
+                lemma: "[[[GEN:#vurkkodit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#vástu+N+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.Pl.Acc",
+                self_id: "22",
+                func: "-F←OBJ",
+                parent_id: "19\n",
+            },
+        );
+    }
+
+    #[test]
+    fn vuosttassadjásaš() {
+        //! line that korp-mono-rs generates:
+        //!
+        //! vuosttas+A+Ord+Cmp/Attr+Cmp#sadjásaš+N+Nom	vuosttas+A+Ord+Cmp/Attr+Cmp#sadjásaš+N+Nom+?	inf
+
+        test_case(
+            concat!(
+                "\"<vuosttassadjásaš>\"\n",
+                "\t\"sadjásaš\" N Sem/Hum_Pos Sg Nom <W:0.0> @<SUBJ #7->3\n",
+                "\t\t\"vuosttas\" A Ord Cmp/Attr Cmp <W:0.0> #7->3\n",
+            ),
+            Processed {
+                word_form: "vuosttassadjásaš",
+                lemma: "[[[GEN:#vuosttas+A+Ord+Cmp/Attr+Cmp#sadjásaš+N+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.Sg.Nom",
+                self_id: "7",
+                func: "←SUBJ",
+                parent_id: "3\n",
+            },
+        );
+    }
+
+    #[test]
+    fn boazujeahkit() {
+        // boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg	boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg+?	inf
+        unimplemented!()
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn Áššefáddán() {
+        test_case(
+            concat!(
+                "\"<Áššefáddán>\"\n",
+                "\t\"fáddá\" N Sem/Semcon Ess <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @SPRED> #1->4\n",
+                "\t\t\"ášši\" N Sem/Semcon Cmp/SgNom Cmp <W:0.0> #1->4\n",
+            ),
+            Processed {
+                word_form: "Áššefáddán",
+                lemma: "[[[GEN:#ášši+N+Cmp/SgNom+Cmp#fáddá+N+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.Ess",
+                self_id: "1",
+                func: "SPRED→",
+                parent_id: "4\n",
+            },
+        );
+    }
+
+    #[test]
+    fn váldinláhkai() {
+        // echo "váldinláhkai" | hfst-lookup -q /usr/share/giella/sme/analyser-gt-desc.hfstol
+        // váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill+Err/Orth-a-á
+        
+        test_case(
+            concat!(
+                "\"<váldinláhkai>\"\n",
+                "\t\"láhki\" N Sem/Dummytag Sg Ill Err/Orth-a-á <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #45->43\n",
+                "\t\t\"váldit\" Ex/V TV Der/NomAct N Sem/Act Cmp/SgNom Cmp <W:0.0> #45->43\n",
+            ),
+            Processed {
+                word_form: "váldinláhkai",
+                lemma: "[[[GEN:#váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill]]]",
+                pos: "N",
+                msd: "N.Ess",
+                self_id: "1",
+                func: "SPRED→",
+                parent_id: "4\n",
+            },
+        );
+    }
+
+    #[test]
+    fn várreovddasteaddjin() {
+        // várri+N+Cmp/SgNom+Cmp#ovddasteaddji+N+NomAg+Nom
+        test_case(
+            concat!(
+                "\"<várreovddasteaddjin>\"\n",
+                "\t\"ovddasteaddji\" N Sem/Hum_Pos NomAg Ess <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<SPRED #18->7\n",
+                "\t\t\"várri\" N Sem/Plc-elevate Cmp/SgNom Cmp <W:0.0> #18->7\n",
+            ),
+            Processed {
+                word_form: "várreovddasteaddjin",
+                lemma: "[[[GEN:#várri+N+Cmp/SgNom+Cmp#ovddasteaddji+N+NomAg+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.NomAg.Ess",
+                self_id: "18",
+                func: "←SPRED",
+                parent_id: "7\n",
+            }
+        );
+    }
+
+    #[test]
+    fn vástideaddjelágan() {
+        test_case(
+            concat!(
+                "\"<vástideaddjelágan>\"\n",
+                "\t\"láhka\" N Sem/Rule Sg Loc South Err/Orth <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #10->2\n",
+                "\t\t\"vástideaddji\" N NomAg Sem/Hum Cmp/SgNom Cmp <W:0.0> #10->2\n",
+            ),
+            Processed {
+                word_form: "vástideaddjelágan",
+                lemma: "[[[GEN:#vástideaddji+N+NomAg+Cmp/SgNom+Cmp#láhka+N+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.Sg.Loc.South",
+                self_id: "10",
+                func: "←ADVL",
+                parent_id: "2\n",
+            },
+        );
     }
 }
