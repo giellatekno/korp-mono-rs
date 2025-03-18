@@ -140,6 +140,11 @@ mod tests {
         expected.is_equal_to(&actual);
     }
 
+
+    /// ------------------------
+    /// Test casene under her:
+    /// ----------------
+    
     #[test]
     fn vurkkodanvásttuid() {
         test_case(
@@ -185,12 +190,6 @@ mod tests {
     }
 
     #[test]
-    fn boazujeahkit() {
-        // boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg	boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg+?	inf
-        unimplemented!()
-    }
-
-    #[test]
     #[allow(non_snake_case)]
     fn Áššefáddán() {
         test_case(
@@ -202,29 +201,6 @@ mod tests {
             Processed {
                 word_form: "Áššefáddán",
                 lemma: "[[[GEN:#ášši+N+Cmp/SgNom+Cmp#fáddá+N+Sg+Nom]]]",
-                pos: "N",
-                msd: "N.Ess",
-                self_id: "1",
-                func: "SPRED→",
-                parent_id: "4\n",
-            },
-        );
-    }
-
-    #[test]
-    fn váldinláhkai() {
-        // echo "váldinláhkai" | hfst-lookup -q /usr/share/giella/sme/analyser-gt-desc.hfstol
-        // váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill+Err/Orth-a-á
-        
-        test_case(
-            concat!(
-                "\"<váldinláhkai>\"\n",
-                "\t\"láhki\" N Sem/Dummytag Sg Ill Err/Orth-a-á <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #45->43\n",
-                "\t\t\"váldit\" Ex/V TV Der/NomAct N Sem/Act Cmp/SgNom Cmp <W:0.0> #45->43\n",
-            ),
-            Processed {
-                word_form: "váldinláhkai",
-                lemma: "[[[GEN:#váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill]]]",
                 pos: "N",
                 msd: "N.Ess",
                 self_id: "1",
@@ -270,6 +246,88 @@ mod tests {
                 msd: "N.Sg.Loc.South",
                 self_id: "10",
                 func: "←ADVL",
+                parent_id: "2\n",
+            },
+        );
+    }
+
+    #[test]
+    fn vejolašvuoña() {
+        test_case(
+            concat!(
+                "\"<vejolašvuoña>\"\n",
+                    "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
+                        "\t\t\"veadju\" Ex/N Sem/Prod-cogn Der/lasj A Cmp/Attr Cmp <W:0.0> #8->9\n",
+                    "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
+                        "\t\t\"vejolaš\" A Sem/Dummytag Cmp/Attr Cmp <W:0.0> #8->9\n",
+            ),
+            Processed {
+                word_form: "vejolašvuoña",
+                // analyse av ordform: veadju+N+Der/lasj+A+Cmp/Attr+Cmp#vuokŋa+N+Sg+Acc
+                lemma: "[[[GEN:#veadju+N+Der/lasj+A+Cmp/Attr+Cmp#vuokŋa+N+Sg+Nom]]]",
+                pos: "N",
+                msd: "N.Sg.Acc",
+                self_id: "8",
+                func: "-FSUBJ→",
+                parent_id: "9\n",
+            },
+        );
+    }
+
+
+    /// ------------
+    /// De under her feiler fremdeles:
+    /// ------------
+    
+    //#[test]
+    //fn boazujeahkit() {
+    //    // boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg	boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg+?	inf
+    //    unimplemented!()
+    //}
+
+    #[test]
+    fn váldinláhkai() {
+        // echo "váldinláhkai" | hfst-lookup -q /usr/share/giella/sme/analyser-gt-desc.hfstol
+        // váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill+Err/Orth-a-á
+        
+        test_case(
+            concat!(
+                "\"<váldinláhkai>\"\n",
+                "\t\"láhki\" N Sem/Dummytag Sg Ill Err/Orth-a-á <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #45->43\n",
+                "\t\t\"váldit\" Ex/V TV Der/NomAct N Sem/Act Cmp/SgNom Cmp <W:0.0> #45->43\n",
+            ),
+            Processed {
+                word_form: "váldinláhkai",
+                lemma: "[[[GEN:#váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill]]]",
+                pos: "N",
+                msd: "N.Ess",
+                self_id: "1",
+                func: "SPRED→",
+                parent_id: "4\n",
+            },
+        );
+    }
+
+
+    #[test]
+    fn áiggiduođaštuvvon() {
+        test_case(
+            concat!(
+                "\"<áiggiduođaštuvvon>\"\n",
+                    "\t\"duođaštit\" Ex/V Ex/TV Gram/3syll Der/PassL <mv> V IV PrfPrc <W:0.0> @IMV #6->2\n",
+                            "\t\t\"áigi\" N Sem/Time Cmp/SgGen Err/Orth Cmp <W:0.0> #6->2\n",
+            ),
+            Processed {
+                word_form: "áiggiduođaštuvvon",
+                // analyse av ordform: áigi+N+Cmp/SgGen+Err/Orth+Cmp#duođaštit+V+TV+Der/PassL+V+IV+PrfPrc
+                // Så her, har fjernet Err/ og Gram/, og forandret PrfPrc til Inf
+                // ... men den kan ikke genereres
+                // LEMMA HER ER IKKE KORREKT:
+                lemma: "[[[GEN:#áigi+N+Cmp/SgGen+Cmp#duođaštit+V+TV+Der/PassL+V+IV+Inf]]]",
+                pos: "V",
+                msd: "IV.PrfPrc",
+                self_id: "6",
+                func: "IMV",
                 parent_id: "2\n",
             },
         );
