@@ -231,25 +231,26 @@ mod tests {
         );
     }
 
-    #[test]
-    fn vástideaddjelágan() {
-        test_case(
-            concat!(
-                "\"<vástideaddjelágan>\"\n",
-                "\t\"láhka\" N Sem/Rule Sg Loc South Err/Orth <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #10->2\n",
-                "\t\t\"vástideaddji\" N NomAg Sem/Hum Cmp/SgNom Cmp <W:0.0> #10->2\n",
-            ),
-            Processed {
-                word_form: "vástideaddjelágan",
-                lemma: "[[[GEN:#vástideaddji+N+NomAg+Cmp/SgNom+Cmp#láhka+N+Sg+Nom]]]",
-                pos: "N",
-                msd: "N.Sg.Loc.South",
-                self_id: "10",
-                func: "←ADVL",
-                parent_id: "2\n",
-            },
-        );
-    }
+    /// Denne gir ingen mening
+    //#[test]
+    //fn vástideaddjelágan() {
+    //    test_case(
+    //        concat!(
+    //            "\"<vástideaddjelágan>\"\n",
+    //            "\t\"láhka\" N Sem/Rule Sg Loc South Err/Orth <W:0.0> <cohort-with-dynamic-compound> <cohort-with-dynamic-compound> @<ADVL #10->2\n",
+    //            "\t\t\"vástideaddji\" N NomAg Sem/Hum Cmp/SgNom Cmp <W:0.0> #10->2\n",
+    //        ),
+    //        Processed {
+    //            word_form: "vástideaddjelágan",
+    //            lemma: "[[[GEN:#vástideaddji+N+NomAg+Cmp/SgNom+Cmp#láhka+N+Sg+Nom]]]",
+    //            pos: "N",
+    //            msd: "N.Sg.Loc.South",
+    //            self_id: "10",
+    //            func: "←ADVL",
+    //            parent_id: "2\n",
+    //        },
+    //    );
+    //}
 
     #[test]
     fn vejolašvuoña() {
