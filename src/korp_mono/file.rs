@@ -74,27 +74,30 @@ impl Sentence {
     }
 }
 
-/// How a ParsedAnalysedDocument is turned into a KorpMonoXmlFile
+/// In the <header><genre> of a corpus document, there are many strings that
+/// we must consolidate to our categories.
+fn genre_map(s: &str) -> &str {
+    match s {
+        "admin" | "administration" => "administration",
+        "bible" => "bible",
+        "facta" => "facts",
+        "ficti" => "fiction",
+        "literature" => "fiction",
+        "law" => "law",
+        "laws" => "law",
+        "news" => "news",
+        "science" => "science",
+        "blogs" => "blog",
+        "wikipedia" => "wikipedia",
+        _ => "",
+    }
+}
+
+/// How a ParsedAnalysedDocument is turned into a KorpMonoFile
 impl From<ParsedAnalysedDocument> for text {
     fn from(doc: ParsedAnalysedDocument) -> Self {
         let gt_domain = match doc.header.genre {
-            Some(genre) => Some(
-                match genre.code.as_str() {
-                    "admin" | "administration" => "administration",
-                    "bible" => "bible",
-                    "facta" => "facts",
-                    "ficti" => "fiction",
-                    "literature" => "fiction",
-                    "law" => "law",
-                    "laws" => "law",
-                    "news" => "news",
-                    "science" => "science",
-                    "blogs" => "blog",
-                    "wikipedia" => "wikipedia",
-                    _ => "",
-                }
-                .to_string(),
-            ),
+            Some(genre) => Some(genre_map(genre.code.as_str()).to_string()),
             None => Some("".to_string()),
         };
 
@@ -128,9 +131,9 @@ impl From<ParsedAnalysedDocument> for text {
             }
         };
 
-        // HERE is how Vec<fst_analysis_parser::Sentence> gets turned into
+        // HERE is how Vec<giellacgparser::Sentence> gets turned into
         // the string
-        // sentences: &Option<Vec<fst_analysis_parser::Sentence>>
+        // sentences: &Option<Vec<giellacgparser::Sentence>>
         let body = doc.body;
         let sentence = body.with_sentences(|sentences| {
             match sentences {

@@ -8,8 +8,26 @@
 //! kulttuur	kulttuur	N	N.Pl.Nom	3	HNOUN	4
 //! jeälltummuš	jeälltummuš	N	N.Sg.Nom	4	HNOUN	0
 
-use fst_analysis_parser::parser::Pos;
+use std::fmt::Debug;
+
+use giellacgparser::{tag::{Pos, Tag}, Reading};
 use itertools::Itertools;
+
+fn tags_of<'a>(
+    analysis: &'a giellacgparser::Analysis<'a>,
+) -> impl Iterator<Item = &'a Tag<'a>> {
+    analysis
+        .all_tags()
+        // don't include the tags that start with an "<",
+        // like <mv>, <ehead>, and <aux>, and also all of these
+        // from korp_mono.py:
+        // <cohort-with-dynamic-compound> <ext> <cs> <hab>
+        // <loc> <gen> <ctjHead>
+        // We already did the pos
+        .filter(|&tag| !tag.is_sem())
+        .filter(|&tag| !tag.is_angle_bracketed())
+        .filter(|&tag| !tag.is_err_starts_with("Orth"))
+}
 
 /// Turn a [`fst_analysis_parser::Sentence`] into a [`String`].
 ///
@@ -18,66 +36,144 @@ use itertools::Itertools;
 ///
 /// word form, lemma, pos, morpho syntactic description, self_id,
 /// functional label, parent_id
-pub fn process_sentence<'a, 'b>(sentence: &'a fst_analysis_parser::Sentence<'b>) -> String {
+pub fn process_sentence<'a, 'b>(sentence: &'a giellacgparser::Sentence<'b>) -> String
+{
     let mut s = String::with_capacity(50);
-    for word in sentence.words.iter() {
-        for token in word.tokens.iter() {
-            let Some(lemma) = token.analyses.get_lemma(token.orig) else {
-                continue;
-            };
-            let mut pos = Pos::Unknown;
-            let mut self_id = 0;
-            let mut parent_id = 0;
-            let mut func = String::from("X");
-            let mut msd = String::from("___");
 
-            for analysis in token.analyses.0.iter() {
-                if let Some(ref analysis) = analysis.borrow().analysis {
-                    if let Some(funcc) = analysis.func {
-                        func = funcc.replace(">", "→").as_str().replace("<", "←");
+    fn add_line(
+        s: &mut String,
+        word_form: &str,
+        lemma: &str,
+        pos: giellacgparser::tag::Pos,
+        tags: &str,
+        self_id: usize,
+        func: &str,
+        parent_id: usize,
+    ) {
+        use std::fmt::Write;
+        s.push_str(word_form);
+        s.push('\t');
+        s.push_str(lemma);
+        s.push('\t');
+        s.push_str(pos.as_str());
+        s.push('\t');
+        s.push_str(tags);
+        s.push('\t');
+        write!(s, "{self_id}").expect("can always write to String");
+        s.push('\t');
+        s.push_str(func);
+        s.push('\t');
+        write!(s, "{parent_id}").expect("can always write to String");
+        s.push('\n');
+    }
+
+    for part in sentence.parts.iter() {
+        match part {
+            giellacgparser::SentencePart::Cohort(cohort) => {
+                let wf: &str = cohort.word_form;
+
+                if wf == "¶" {
+                    // sentinel word to indicate end of paragraph,
+                    // or end of line, or something like this
+                    continue;
+                }
+
+                let mut pos = Pos::Unknown;
+                let mut self_id = 0;
+                let mut parent_id = 0;
+                let mut func = String::from("X");
+                let mut msd = String::from("___");
+
+                match cohort.first_reading_with_analysis() {
+                    Some(reading) => {
+                        let lemma = giellacgparser::reading_lemma(reading.clone());
+                        if let Some(ref analysis) = reading.borrow().analysis {
+                            if let Some(funcc) = analysis.func {
+                                func = funcc.replace(">", "→").as_str().replace("<", "←");
+                            }
+                            if let Some((f, t)) = analysis.deprel {
+                                self_id = f;
+                                parent_id = t;
+                            }
+
+                            msd = tags_of(analysis).join(".");
+                            pos = analysis.pos;
+                        }
+
+                        add_line(&mut s, wf, &lemma, pos, &msd, self_id, &func, parent_id);
                     }
-                    if let Some((f, t)) = analysis.deprel {
-                        self_id = f;
-                        parent_id = t;
+                    None => {
+                        // None of the readings had an analysis, so we're
+                        // just going to have to put "empty" data for this word
+                        // TODO what should the LEMMA field be? The word form,
+                        // or some kind of blank value?
+                        let lemma = cohort.word_form;
+                        add_line(&mut s, wf, &lemma, pos, &msd, self_id, &func, parent_id);
                     }
-                    pos = analysis.pos;
-                    msd = analysis
-                        .all_tags()
-                        // don't include the tags that start with an "<",
-                        // like <mv>, <ehead>, and <aux>, and also all of these
-                        // from korp_mono.py:
-                        // <cohort-with-dynamic-compound> <ext> <cs> <hab>
-                        // <loc> <gen> <ctjHead>
-                        // We already did the pos
-                        .filter(|&tag| !tag.is_sem())
-                        .filter(|&tag| !tag.is_angle_bracketed())
-                        .filter(|&tag| !tag.is_err_starts_with("Orth"))
-                        .join(".");
-                    break;
                 }
             }
-            s.push_str(token.word_form);
-            s.push('\t');
-            s.push_str(&lemma);
-            s.push('\t');
-            s.push_str(pos.as_str());
-            s.push('\t');
-            s.push_str(&msd);
-            s.push('\t');
-            s.push_str(&format!("{self_id}"));
-            s.push('\t');
-            s.push_str(&func);
-            s.push('\t');
-            s.push_str(&format!("{parent_id}"));
-            s.push('\n');
+            giellacgparser::SentencePart::CohortSeparator(_sep) => {
+                // TODO check if sep is non-whitespace, and if so,
+                // add it (of course, there will be no analysis)
+                // code=something like the commented-out code
+                //if !s.trim().is_empty() {
+                //    s.push_str(sep.0);
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\t');
+                //    s.push_str("___");
+                //    s.push('\n');
+                //}
+            }
         }
     }
     s
 }
 
+// THIS WILL BE IMPLEMENTED IN giellacgparser::Reading::get_full_lemma()
+//fn make_gen_lemma_string(reading: &Reading) -> String {
+//    use std::{rc::Rc, fmt::Write};
+//    let mut s = String::from("[[[GEN:");
+//    let mut current = Rc::clone(reading.children.first()
+//        .expect("already checked that reading has children")
+//    );
+//    loop {
+//        if current.borrow().analysis.is_none() {
+//            // reading has no analysis, nothing to write
+//            break;
+//        };
+//        s.push('#');
+//        s.push_str(current.borrow().lemma);
+//        match current.borrow().analysis {
+//            Some(ref analysis) => {
+//                for tag in tags_of(&analysis) {
+//                    write!(s, "+{tag}").expect("write! to String");
+//                }
+//            }
+//            None => {}
+//        }
+//        if current.borrow().children.is_empty() {
+//            break;
+//        }
+//        let borrow = current.borrow();
+//        let next = &borrow.children.first().unwrap();
+//        current = Rc::clone(next);
+//    }
+//    s.push_str("]]]");
+//    s
+//}
+
 #[cfg(test)]
 mod tests {
-    use fst_analysis_parser::parse_sentences;
+    use giellacgparser::parse_sentences;
     use super::process_sentence;
 
     /// A processed line.

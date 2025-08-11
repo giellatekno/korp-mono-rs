@@ -24,7 +24,7 @@
 //!   </header>
 //!   <body><dependency><![CDATA[
 //! ...  big blob of analysis data here, as a string  ...
-//! ...  will be parsed by fst_analysis_parser        ...
+//! ...  will be parsed by giellacgparser             ...
 //! ]]></dependency></body></document>
 //! ```
 
@@ -130,7 +130,7 @@ pub struct ParsedBody {
     #[serde(skip)]
     #[not_covariant]
     #[borrows(dependency)]
-    pub sentences: Option<Vec<fst_analysis_parser::Sentence<'this>>>,
+    pub sentences: Option<Vec<giellacgparser::Sentence<'this>>>,
 }
 
 // FIXME: ParsedBody contains Rc, which is not Send. But only 1 thread
@@ -145,11 +145,11 @@ impl TryFrom<UnparsedAnalysedDocument> for ParsedAnalysedDocument {
         let parsed_body = ParsedBodyBuilder {
             dependency: value.body.dependency,
             sentences_builder: |dep| {
-                let parse_result = fst_analysis_parser::parse_sentences(&dep);
+                let parse_result = giellacgparser::parse_sentences(&dep);
                 // TODO should really check that _rem is empty, to be sure
                 // that the entire <dependency> has been parsed
                 let (_rem, sents) = parse_result.ok()?;
-                Some(sents)
+                Some(sents.sentences)
             },
         }
         .build();

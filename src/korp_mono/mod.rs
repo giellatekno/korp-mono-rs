@@ -1,4 +1,4 @@
 pub mod file;
 pub mod path;
 
-pub use file::text as KorpMonoXmlFile;
+pub use file::text as KorpMonoFile;

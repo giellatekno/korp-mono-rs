@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 use crate::analysed::file::{ParsedAnalysedDocument, UnparsedAnalysedDocument};
-use crate::korp_mono::KorpMonoXmlFile;
+use crate::korp_mono::KorpMonoFile;
 use crate::korp_mono::path::KorpMonoPath;
 use crate::process_sentence::process_sentence;
 
@@ -198,12 +198,12 @@ fn convert_document(
     _status_queue: mpsc::Sender<StatusMessage>,
     path: AnalysedFilePath,
     document: Arc<Mutex<ParsedAnalysedDocument>>,
-) -> Option<(AnalysedFilePath, KorpMonoXmlFile)> {
+) -> Option<(AnalysedFilePath, KorpMonoFile)> {
     let t0 = Instant::now();
     let parsed_analysed_document =
         Mutex::into_inner(Arc::into_inner(document).expect("only 1 thread accesses this arc"))
             .expect("only 1 thread accesses this mutex");
-    let korp_mono_xml_file = KorpMonoXmlFile::from(parsed_analysed_document);
+    let korp_mono_xml_file = KorpMonoFile::from(parsed_analysed_document);
     let _dur = Instant::now().duration_since(t0);
     Some((path, korp_mono_xml_file))
 }
@@ -211,7 +211,7 @@ fn convert_document(
 fn write_korpmono_file(
     status_queue: mpsc::Sender<StatusMessage>,
     path: AnalysedFilePath,
-    korp_mono_file: KorpMonoXmlFile,
+    korp_mono_file: KorpMonoFile,
 ) -> Option<()> {
     let output_path = KorpMonoPath::from(&path);
     match std::fs::create_dir_all(output_path.parent()) {
@@ -263,7 +263,7 @@ fn main() {
         dir.push(input_dir);
         input_dir = dir;
     }
-    match AnalysedFilePath::try_from(&input_dir) {
+    match AnalysedFilePath::try_from(input_dir.clone()) {
         Ok(_) => {}
         Err(e) => {
             println!("not analysed/ directory of a corpus\ninner:{e}");
