@@ -16,3 +16,4 @@ rayon = "1.10.0"
 serde = { version = "1.0.218", features = ["derive"] }
 tap = "1.0.1"
 walkdir = "2.5.0"
+gtcorpusutil = { path = "/home/anders/projects/gtcorpusutil/" }

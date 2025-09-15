@@ -10,12 +10,13 @@
 
 use std::fmt::Debug;
 
-use giellacgparser::{tag::{Pos, Tag}, Reading};
+use giellacgparser::{
+    Reading,
+    tag::{Pos, Tag},
+};
 use itertools::Itertools;
 
-fn tags_of<'a>(
-    analysis: &'a giellacgparser::Analysis<'a>,
-) -> impl Iterator<Item = &'a Tag<'a>> {
+fn tags_of<'a>(analysis: &'a giellacgparser::Analysis<'a>) -> impl Iterator<Item = &'a Tag<'a>> {
     analysis
         .all_tags()
         // don't include the tags that start with an "<",
@@ -36,8 +37,7 @@ fn tags_of<'a>(
 ///
 /// word form, lemma, pos, morpho syntactic description, self_id,
 /// functional label, parent_id
-pub fn process_sentence<'a, 'b>(sentence: &'a giellacgparser::Sentence<'b>) -> String
-{
+pub fn process_sentence<'a, 'b>(sentence: &'a giellacgparser::Sentence<'b>) -> String {
     let mut s = String::with_capacity(50);
 
     fn add_line(
@@ -173,8 +173,8 @@ pub fn process_sentence<'a, 'b>(sentence: &'a giellacgparser::Sentence<'b>) -> S
 
 #[cfg(test)]
 mod tests {
-    use giellacgparser::parse_sentences;
     use super::process_sentence;
+    use giellacgparser::parse_sentences;
 
     /// A processed line.
     #[derive(Debug, PartialEq, Eq)]
@@ -236,11 +236,10 @@ mod tests {
         expected.is_equal_to(&actual);
     }
 
-
     /// ------------------------
     /// Test casene under her:
     /// ----------------
-    
+
     #[test]
     fn vurkkodanvásttuid() {
         test_case(
@@ -323,7 +322,7 @@ mod tests {
                 self_id: "18",
                 func: "←SPRED",
                 parent_id: "7\n",
-            }
+            },
         );
     }
 
@@ -353,10 +352,10 @@ mod tests {
         test_case(
             concat!(
                 "\"<vejolašvuoña>\"\n",
-                    "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
-                        "\t\t\"veadju\" Ex/N Sem/Prod-cogn Der/lasj A Cmp/Attr Cmp <W:0.0> #8->9\n",
-                    "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
-                        "\t\t\"vejolaš\" A Sem/Dummytag Cmp/Attr Cmp <W:0.0> #8->9\n",
+                "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
+                "\t\t\"veadju\" Ex/N Sem/Prod-cogn Der/lasj A Cmp/Attr Cmp <W:0.0> #8->9\n",
+                "\t\"vuokŋa\" N Sem/Body Sg Acc <W:0.0> @-FSUBJ> #8->9\n",
+                "\t\t\"vejolaš\" A Sem/Dummytag Cmp/Attr Cmp <W:0.0> #8->9\n",
             ),
             Processed {
                 word_form: "vejolašvuoña",
@@ -371,11 +370,10 @@ mod tests {
         );
     }
 
-
     /// ------------
     /// De under her feiler fremdeles:
     /// ------------
-    
+
     //#[test]
     //fn boazujeahkit() {
     //    // boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg	boazu+N+Cmp/SgNom+Cmp#jeahkit+V+TV+Der/NomAg+N+Sg+?	inf
@@ -386,7 +384,7 @@ mod tests {
     fn váldinláhkai() {
         // echo "váldinláhkai" | hfst-lookup -q /usr/share/giella/sme/analyser-gt-desc.hfstol
         // váldit+V+TV+Der/NomAct+N+Cmp/SgNom+Cmp#láhki+N+Sg+Ill+Err/Orth-a-á
-        
+
         test_case(
             concat!(
                 "\"<váldinláhkai>\"\n",
@@ -405,14 +403,13 @@ mod tests {
         );
     }
 
-
     #[test]
     fn áiggiduođaštuvvon() {
         test_case(
             concat!(
                 "\"<áiggiduođaštuvvon>\"\n",
-                    "\t\"duođaštit\" Ex/V Ex/TV Gram/3syll Der/PassL <mv> V IV PrfPrc <W:0.0> @IMV #6->2\n",
-                            "\t\t\"áigi\" N Sem/Time Cmp/SgGen Err/Orth Cmp <W:0.0> #6->2\n",
+                "\t\"duođaštit\" Ex/V Ex/TV Gram/3syll Der/PassL <mv> V IV PrfPrc <W:0.0> @IMV #6->2\n",
+                "\t\t\"áigi\" N Sem/Time Cmp/SgGen Err/Orth Cmp <W:0.0> #6->2\n",
             ),
             Processed {
                 word_form: "áiggiduođaštuvvon",
