@@ -11,3 +11,4 @@ regex = "1.11.1"
 walkdir = "2.5.0"
 hfst = { path = "/home/anders/projects/hfst-rust/hfst" }
 base64 = "0.22.1"
+gtcorpusutil = { path = "/home/anders/projects/gtcorpusutil/" }

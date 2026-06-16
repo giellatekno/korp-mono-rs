@@ -2,138 +2,58 @@
 //! [[[GEN:INNER]]]
 //! with the generated text from passing INNER to the generator fst.
 
+use clap::Parser;
+use gtcorpusutil::Root;
+use hfst::{HfstInputStream, HfstTransducer};
+use rayon::prelude::*;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use walkdir::WalkDir;
-use regex::Regex;
-use clap::Parser;
-use anyhow::{bail, Result};
-use rayon::prelude::*;
-use hfst::{HfstInputStream, HfstTransducer};
-
 
 /// Read all korp_mono xml files, and replace `[[[GEN:<inner>]]]` with
-/// the generated text. To do this, send all the `<inner>` text to the 
+/// the generated text. To do this, send all the `<inner>` text to the
 /// generator for that language.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Path to the generator fst to use for generation.
-    generator: PathBuf,
-    /// corpus-xxx/korp_mono/ directory
-    korp_mono_dir: PathBuf,
+    /// Language you want to process, in 3-letter ISO-639-3 code, e.g.
+    /// `nob` or `sme`.
+    language: String,
+    /// Directory where the corpus directories are stored.
+    ///
+    /// It is customary to keep all `corpus-xxx[...]` directories in a
+    /// common directory, and often this directory is named `giellalt` (the
+    /// same as the organiztion name is on github). If `gut` is
+    /// system that uses
+    #[arg(long = "root")]
+    root: Option<PathBuf>,
     /// Only output the found GEN
     #[arg(long)]
     only_show_gens: bool,
+    /// Use a custom generator fst. By default it uses what it finds on the system.
+    #[arg(long)]
+    generator_fst: Option<PathBuf>,
 }
 
-fn is_corpus_dir(component: &std::path::Component) -> bool {
-    let chars = component
-        .as_os_str()
-        .to_str()
-        .expect("file path components are always valid utf-8")
-        .chars();
-
-    let mut arr = ['\0'; 10];
-    for (i, ch) in chars.enumerate() {
-        if ch.len_utf8() != 1 {
-            return false;
-        }
-        arr[i] = ch;
-    }
-    if arr[0..7] != ['c', 'o', 'r', 'p', 'u', 's', '-'] {
-        return false;
-    }
-
-    arr[7..10].iter()
-        .all(|ch| matches!(ch, 'a'..='z'))
-    //for ch in &arr[7..10] {
-    //    if !matches(ch, 'a'..='z') {
-    //        return false;
-    //    }
-    //}
-    //true
-}
-
-/// Is this path inside the analysed/ directory of a corpus-xxx folder?
-/// We scan from the start of the path, and if we find 'corpus-xxx/analysed',
-/// then yes. Else no.
-pub fn is_korp_mono_dir<P: AsRef<std::path::Path>>(path: P) -> bool {
-    let mut prev_is_corpus_dir = false;
-    for component in path.as_ref().components() {
-        if is_corpus_dir(&component) {
-            prev_is_corpus_dir = true;
-            continue
-        }
-
-        let comp = component
-            .as_os_str()
-            .to_str()
-            .expect("path component is utf-8");
-        if comp == "korp_mono" && prev_is_corpus_dir {
-            return true;
-        }
-    }
-    false
-}
-
-/// Walk a directory, and return a Vec of the PathBuf to each file in that
-/// directory, whose name ends with ".xml"
-fn collect_files(p: PathBuf) -> Vec<PathBuf> {
-    WalkDir::new(p)
-        .into_iter()
-        .flat_map(|maybe_entry| maybe_entry)
-        .filter(|entry| entry.file_type().is_file())
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_str()
-                .expect("all file names are utf-8")
-                .ends_with(".xml")
-        })
-        .map(|entry| PathBuf::from(entry.path()))
-        .collect()
-}
-
-fn run_hfst_lookup(generator_path: &Path, input: &str) -> Result<(String, String)> {
-    let proc = std::process::Command::new("hfst-lookup")
-        .arg("-q")
-        .arg(generator_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .output();
-    println!("{input}");
-    match proc {
-        Ok(output) => {
-            let stdout = String::from_utf8(output.stdout)?;
-            let stderr = String::from_utf8(output.stderr)?;
-            Ok((stdout, stderr))
-        }
-        Err(ioerr) => Err(anyhow::anyhow!("error running hfst_lookup: {ioerr}")),
-    }
-}
-
-fn load_fst<P: AsRef<Path>>(path: P) -> Result<HfstTransducer> {
-    let Ok(istream) = HfstInputStream::new(&path) else {
-        anyhow::bail!("can't read hfst from file '{:?}'", path.as_ref());
-    };
-    let mut transducers = istream.read_transducers();
-    if transducers.is_empty() {
-        anyhow::bail!("fst contains no transducers '{:?}'", path.as_ref());
-    }
-    Ok(transducers.swap_remove(0))
+fn load_fst<P: AsRef<Path>>(path: P) -> anyhow::Result<HfstTransducer> {
+    unimplemented!()
 }
 
 fn process_file(
     reg: &Regex,
     fst: &HfstTransducer,
-    file: &Path,
-) -> Result<(Vec<String>, Duration)> {
+    file: &gtcorpusutil::korp_mono::KorpMonoFile,
+) -> anyhow::Result<(Vec<String>, Duration)> {
     let t0 = Instant::now();
-    let s = std::fs::read_to_string(file)?;
+    let s = std::fs::read_to_string(&file.path)?;
     let mut results = vec![];
     for m in reg.find_iter(&s) {
-        let inner = m.as_str().strip_prefix("[[[GEN:#").unwrap().strip_suffix("]]]").unwrap();
+        let inner = m
+            .as_str()
+            .strip_prefix("[[[GEN:#")
+            .unwrap()
+            .strip_suffix("]]]")
+            .unwrap();
         let Some((gen_str, gcgreading)) = inner.split_once(":::") else {
             anyhow::bail!("':::' not found in [[[GEN...]]]");
         };
@@ -212,8 +132,7 @@ fn try_replace_inf_with_prfprc(gen_str: &str, fst: &HfstTransducer) -> Option<Ve
 /// The lemma should just be the exact word form, e.g. "50%" or, if the original
 /// contained spaces, then with the spaces included, such as "2 %".
 fn handle_number_pct(gen_str: &str, fst: &HfstTransducer) -> Option<Vec<String>> {
-    gen_str.strip_prefix("%+")
-        .map(|s| vec![s.to_string()])
+    gen_str.strip_prefix("%+").map(|s| vec![s.to_string()])
 }
 
 /// Remove everything inside `@` symbols inside the string `s`, and return a
@@ -247,34 +166,67 @@ fn remove_ats(s: &str) -> String {
     out
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-    let generator_path = args.generator;
-    let mut korp_mono_dir = args.korp_mono_dir;
-    let only_show_gens = args.only_show_gens;
+fn main() -> anyhow::Result<()> {
+    let Args {
+        language: lang,
+        root,
+        only_show_gens,
+        generator_fst,
+        ..
+    } = Args::parse();
 
-    if korp_mono_dir.is_relative() {
-        let mut dir = std::env::current_dir().expect("cwd can be retrieved");
-        dir.push(korp_mono_dir);
-        korp_mono_dir = dir;
-    }
-    if !is_korp_mono_dir(&korp_mono_dir) {
-        bail!("error not a korp_mono directory: {korp_mono_dir:?}");
-    }
+    let root: Root = match root {
+        Some(path) => {
+            let root = gtcorpusutil::path_rel2abs_with_cwd(path)?;
+            Root::from(root)
+        }
+        None => Root::from_gut_config().map_err(|e| {
+            anyhow::anyhow!(
+                "failed to get gut root directory:\n{e}\n\
+                    hint: you can specify the corpus root with the --corpus-root\
+                    argument"
+            )
+        })?,
+    };
 
-    let fst = load_fst(generator_path)?;
+    let files: Vec<_> = root
+        .corpora()
+        .filter(|corpus| corpus.corpus_name.lang == lang)
+        .flat_map(|corpus| corpus.korp_mono().files().collect::<Vec<_>>())
+        .collect();
+
+    let generator_fst_path = match generator_fst {
+        Some(path) => Some(path),
+        None => gtcorpusutil::find_lang_resource(&lang, "generator-gt-norm.hfstol"),
+    };
+
+    let Some(generator_fst_path) = generator_fst_path else {
+        anyhow::bail!("couldn't find generator fst");
+    };
+
+    let Ok(fst_istream) = HfstInputStream::new(&generator_fst_path) else {
+        anyhow::bail!(
+            "can't read hfst from file '{}'", generator_fst_path.display()
+        )
+    };
+    let Some(transducer) = fst_istream.read_only_transducer() else {
+        anyhow::bail!(".hfstol does not contain exactly 1 transducer, which we expected.");
+    };
+    Ok(transducer)
 
     let reg = Regex::new(r"\[\[\[GEN:[^\]]+\]\]\]").unwrap();
 
-    let files = collect_files(korp_mono_dir);
     if !only_show_gens {
-        println!("Korp-mono-fill-gen starting, {} files to process..", files.len());
+        println!(
+            "Korp-mono-fill-gen starting, {} files to process..",
+            files.len()
+        );
     }
 
     let mut tot: Duration = Duration::ZERO;
     files
         .iter()
-        .filter_map(|path| process_file(&reg, &fst, &path).ok())
+        .filter_map(|path| process_file(&reg, &generator_fst, &path).ok())
         .for_each(|(results, dur)| {
             use std::io::Write;
             let stdout = std::io::stdout();

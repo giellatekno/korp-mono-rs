@@ -231,7 +231,7 @@ mod tests {
             }
         };
         assert!(rest.is_empty());
-        let first = sentences.first().expect("There is a sentence.");
+        let first = sentences.sentences.first().expect("There is a sentence.");
         let actual = process_sentence(first);
         expected.is_equal_to(&actual);
     }

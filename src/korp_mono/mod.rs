@@ -1,4 +1,3 @@
-pub mod file;
-pub mod path;
+mod file;
 
 pub use file::text as KorpMonoFile;
