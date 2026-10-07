@@ -272,6 +272,19 @@ fn generate_missing_baseforms(
 
     let mut not_found = std::collections::HashMap::new();
 
+    let generation_log = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open("GENERATION_LOG.txt");
+    let mut genlog = match generation_log {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("can't open generation log file (GENERATION_LOG.txt) for writing, aborting\n{e}");
+            return None;
+        }
+    };
+    use std::io::Write;
+
     for file in files {
         let (file_contents, statuses) = match processor.process(&file) {
             Ok((string, statuses)) => (string, statuses),
@@ -289,6 +302,24 @@ fn generate_missing_baseforms(
         }
 
         for status in statuses {
+            writeln!(genlog, "word form: {}", status.word_form);
+            writeln!(genlog, "reading (from analysis):\n{}", status.reading);
+
+            for (i, attempt) in status.attempts.into_iter().enumerate() {
+                let i = i + 1;
+                writeln!(genlog, "  - generate attempt #{i}:");
+                writeln!(genlog, "    input: {}", attempt.input);
+
+                if attempt.result.is_empty() {
+                    writeln!(genlog, "    output: [no generation hit]");
+                } else {
+                    writeln!(genlog, "    output:");
+                    for res in attempt.result {
+                        writeln!(genlog, "      - {}", res);
+                    }
+                }
+            }
+
             gen_occurences += 1;
             if status.is_success() {
                 gen_successes += 1;
