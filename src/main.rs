@@ -303,8 +303,8 @@ fn generate_missing_baseforms(
 
         for status in statuses {
             let is_success = status.is_success();
-            let _ = writeln!(genlog, "word form: {}", status.word_form);
-            let _ = writeln!(genlog, "reading (from analysis):\n{}", status.reading);
+            let _ = writeln!(genlog, "word form: {}\n", status.word_form.trim());
+            let _ = writeln!(genlog, "{}", status.reading);
 
             for (i, attempt) in status.attempts.into_iter().enumerate() {
                 let i = i + 1;
@@ -316,10 +316,12 @@ fn generate_missing_baseforms(
                 } else {
                     let _ = writeln!(genlog, "    output:");
                     for res in attempt.result {
-                        let _ = writeln!(genlog, "      - {}", res);
+                        let res = without_ats::without_ats(&res);
+                        let _ = writeln!(genlog, "      - {res}");
                     }
                 }
             }
+            let _ = writeln!(genlog, "");
 
             gen_occurences += 1;
             if is_success {
