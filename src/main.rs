@@ -302,26 +302,27 @@ fn generate_missing_baseforms(
         }
 
         for status in statuses {
-            writeln!(genlog, "word form: {}", status.word_form);
-            writeln!(genlog, "reading (from analysis):\n{}", status.reading);
+            let is_success = status.is_success();
+            let _ = writeln!(genlog, "word form: {}", status.word_form);
+            let _ = writeln!(genlog, "reading (from analysis):\n{}", status.reading);
 
             for (i, attempt) in status.attempts.into_iter().enumerate() {
                 let i = i + 1;
-                writeln!(genlog, "  - generate attempt #{i}:");
-                writeln!(genlog, "    input: {}", attempt.input);
+                let _ = writeln!(genlog, "  - generate attempt #{i}:");
+                let _ = writeln!(genlog, "    input: {}", attempt.input);
 
                 if attempt.result.is_empty() {
-                    writeln!(genlog, "    output: [no generation hit]");
+                    let _ = writeln!(genlog, "    output: [no generation hit]");
                 } else {
-                    writeln!(genlog, "    output:");
+                    let _ = writeln!(genlog, "    output:");
                     for res in attempt.result {
-                        writeln!(genlog, "      - {}", res);
+                        let _ = writeln!(genlog, "      - {}", res);
                     }
                 }
             }
 
             gen_occurences += 1;
-            if status.is_success() {
+            if is_success {
                 gen_successes += 1;
             } else {
                 let cloned = status.word_form.clone();
@@ -331,6 +332,8 @@ fn generate_missing_baseforms(
             }
         }
     }
+
+    let _ = genlog.sync_all();
 
     let mut not_found: Vec<(String, u64)> = not_found.drain().collect();
     not_found.sort_unstable_by_key(|(_s, n)| *n);
