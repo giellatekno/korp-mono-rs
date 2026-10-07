@@ -17,6 +17,7 @@ serde = { version = "1.0.218", features = ["derive"] }
 tap = "1.0.1"
 walkdir = "2.5.0"
 gtcorpusutil = { git = "https://github.com/giellatekno/gtcorpusutil" }
+korp-mono-fill-gen = { git = "https://github.com/giellatekno/korp-mono-fill-gen" }
 indicatif = { version = "0.18.4", features = ["rayon", "improved_unicode"] }
 tracing = "0.1.44"
 tracing-indicatif = "0.3.14"

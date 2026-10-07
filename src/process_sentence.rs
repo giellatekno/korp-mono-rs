@@ -38,7 +38,7 @@ fn tags_of<'a>(analysis: &'a giellacgparser::Analysis<'a>) -> impl Iterator<Item
 /// word form, lemma, pos, morpho syntactic description, self_id,
 /// functional label, parent_id
 pub fn process_sentence<'a, 'b>(sentence: &'a giellacgparser::Sentence<'b>) -> String {
-    let mut s = String::with_capacity(50);
+    let mut s = String::with_capacity(32);
 
     fn add_line(
         s: &mut String,

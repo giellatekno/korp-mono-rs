@@ -22,13 +22,13 @@ use crate::korp_mono::KorpMonoFile;
 use crate::process_sentence::process_sentence;
 use crate::status_message::{StatusMessage, StatusMessageKind};
 
-
+use korp_mono_fill_gen::Processor;
 use tracing::Span;
 
-    use tracing_indicatif::IndicatifLayer;
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_indicatif::span_ext::IndicatifSpanExt;
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Section {
@@ -48,16 +48,14 @@ enum Section {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Language you want to process, in 3-letter ISO-639-3 code, e.g.
-    /// `nob` or `sme`.
+    /// Language you want to process, in 3-letter ISO-639-3 code, e.g. `nob` or `sme`.
     language: String,
 
     /// Directory where the corpus directories are stored.
     ///
     /// It is customary to keep all `corpus-xxx[...]` directories in a
     /// common directory, and often this directory is named `giellalt` (the
-    /// same as the organiztion name is on github). If `gut` is
-    /// system that uses
+    /// same as the organiztion name is on github).
     #[arg(long)]
     root: Option<PathBuf>,
 
@@ -68,6 +66,20 @@ struct Args {
     /// Don't output anything, but still write the .log files
     #[arg(short, long)]
     quiet: bool,
+
+    /// Do not run 'GEN'-replacements.
+    #[arg(long)]
+    no_fill_gen: bool,
+
+    /// The path to the .hfstol to use for generating lemma forms. If
+    /// not given, it defaults to 'generator-gt-norm.hfstol' for the
+    /// language, searched in the standard positions.
+    #[arg(long)]
+    generator_fst: Option<PathBuf>,
+
+    /// Only run for these files.
+    files: Option<Vec<PathBuf>>,
+
 }
 
 macro_rules! q_send_or_panic {
@@ -163,10 +175,12 @@ fn parse_analyses(
             Some((analysed_file_path, Arc::new(Mutex::new(doc))))
         }
         Ok(Err(e)) => {
+            eprintln!("{e}");
             None
             //Err(e)
         }
         Err(e) => {
+            eprintln!("{e:?}");
             let m = if let Some(p) = e.downcast_ref::<&str>() {
                 p.to_string()
             } else if let Some(s) = e.downcast_ref::<String>() {
@@ -212,9 +226,7 @@ fn write_korpmono_file(
     let p = path.to_path_buf();
     /* rust: temporary value dropped while borrowed */
     let parent = p.parent().expect("path to file has a parent directory");
-    println!("{}", parent.display());
     if let Err(e) = std::fs::create_dir_all(parent) {
-        println!("can't create directory");
         //q_send_or_panic!(q, StatusMessage::cant_create_dir(&path.file, e));
         //pb.set_length(pb.length().unwrap() - 1);
         return None;
@@ -243,11 +255,73 @@ fn write_korpmono_file(
     Some(path)
 }
 
-fn gen_missing_baseforms(q: mpsc::Sender<StatusMessage>, path: gtcorpusutil::KorpMonoFilePath) -> Option<()> {
-    let path = path.to_path_buf();
-    let (dur, res) = timed(|| std::fs::read_to_string(&path));
-    q_send_or_panic!(q, StatusMessage::read(&path, dur, &res));
-    let string = res.ok()?;
+fn generate_missing_baseforms(
+    root: Root,
+    lang: &str,
+    processor: korp_mono_fill_gen::Processor,
+) -> Option<()> {
+    let files: Vec<gtcorpusutil::KorpMonoFilePath> = root
+        .corpora()
+        .filter(|corpus| corpus.corpus_name.lang == lang)
+        .filter(|corpus| corpus.corpus_name.is_closed())
+        .flat_map(|corpus| corpus.into_korp_mono().files().collect::<Vec<_>>())
+        .collect();
+
+    let mut gen_occurences = 0;
+    let mut gen_successes = 0;
+
+    let mut not_found = std::collections::HashMap::new();
+
+    for file in files {
+        let (file_contents, statuses) = match processor.process(&file) {
+            Ok((string, statuses)) => (string, statuses),
+            Err(e) => {
+                eprintln!("error processing file: {e}");
+                continue;
+            }
+        };
+
+        match std::fs::write(file.to_path_buf(), file_contents) {
+            Ok(()) => {},
+            Err(e) => {
+                eprintln!("error writing updated file: {e}");
+            }
+        }
+
+        for status in statuses {
+            gen_occurences += 1;
+            if status.is_success() {
+                gen_successes += 1;
+            } else {
+                let cloned = status.word_form.clone();
+                not_found.entry(cloned)
+                    .and_modify(|i| { *i += 1 })
+                    .or_insert(1);
+            }
+        }
+    }
+
+    let mut not_found: Vec<(String, u64)> = not_found.drain().collect();
+    not_found.sort_unstable_by_key(|(_s, n)| *n);
+    not_found.reverse();
+
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open("NOT_GENERATED.txt");
+    if let Ok(mut f) = f {
+        use std::io::Write;
+        for (k, v) in not_found {
+            let k = k.trim();
+            let _ = writeln!(f, "{k}\t{v}");
+        }
+    }
+
+    println!("number of GEN to generate: {gen_occurences}");
+    println!("number of successfully generated: {gen_successes}");
+    println!("Forms that could not be generated written to NOT_GENERATED.txt");
+    //q_send_or_panic!(q, StatusMessage::read(&path, dur, &res));
+    //let string = res.ok()?;
     None
 }
 
@@ -351,12 +425,71 @@ macro_rules! clear_line {
     }
 }
 
+fn determine_root_and_files(
+    root: Option<PathBuf>,
+    files: Option<Vec<PathBuf>>,
+    skip_open: bool,
+    skip_closed: bool,
+    lang: &str,
+) -> anyhow::Result<(Root, Vec<gtcorpusutil::AnalysedFilePath>)> {
+    // given: root files
+    //          -    -     get root from gut config, process all files in lang
+    //          x    -     process all files in lang, from the given root
+    //          -    x     determine root, make sure all files are in the same root/analysed/ dir,
+    //                     then process those files
+    //          x    x     make sure all files given are in the root, then process those given files
+    match (root, files) {
+        (Some(root), Some(files)) => {
+            let root = Root::new(root);
+            unimplemented!()
+        }
+        (Some(root), None) => {
+            let root = Root::new(root);
+            let files = root
+                .corpora()
+                .filter(|corpus| corpus.corpus_name.lang == lang)
+                .filter(|corpus| !skip_open || !corpus.corpus_name.is_open())
+                .filter(|corpus| !skip_closed || !corpus.corpus_name.is_closed())
+                // XXX collect() here, see the impl Analysed block comment
+                .flat_map(|corpus| corpus.into_analysed().files().collect::<Vec<_>>())
+                .collect();
+            Ok((root, files))
+        }
+        (None, Some(files)) => {
+            unimplemented!()
+        }
+        (None, None) => {
+            let root = Root::from_gut_config()?;
+            let files = root
+                .corpora()
+                .filter(|corpus| corpus.corpus_name.lang == lang)
+                .filter(|corpus| !skip_open || !corpus.corpus_name.is_open())
+                .filter(|corpus| !skip_closed || !corpus.corpus_name.is_closed())
+                // XXX collect() here, see the impl Analysed block comment
+                .flat_map(|corpus| corpus.into_analysed().files().collect::<Vec<_>>())
+                .collect();
+            Ok((root, files))
+        }
+    }
+    //let files: Vec<gtcorpusutil::AnalysedFilePath> = if let Some(single_file) = single_file {
+    //    let single_file = gtcorpusutil::utils::path_make_absolute_and_canonicalize(single_file)?;
+    //    let file = gtcorpusutil::AnalysedFilePath::builder()
+    //        .file(PathBuf::from(single_file))
+    //        .build();
+    //    // TODO
+    //    vec![file]
+    //} else {
+    //};
+}
+
 fn main() -> anyhow::Result<()> {
     let Args {
         language: lang,
         skip_section: skip_sections,
         root,
         quiet,
+        generator_fst,
+        files,
         ..
     } = Args::parse();
 
@@ -364,27 +497,21 @@ fn main() -> anyhow::Result<()> {
     let skip_closed = skip_sections.contains(&Section::Closed);
     if skip_open && skip_closed {
         anyhow::bail!(
-            "can't give --skip-section open AND --skip-section closed at the same time (there would be nothing to process)"
+            "both `--skip-section open` and `--skip-section closed` given. nothing to process, aborting"
         );
     }
 
-    let root: Root = match root {
-        Some(dir) => Root::new(dir),
-        None => Root::from_gut_config()
-            .with_context(|| format!("failed to get gut root directory:\nhint: you can specify where corpus root directory resides explicitly with the --corpus-root argument"))?,
-    };
-
-    let files: Vec<gtcorpusutil::AnalysedFilePath> = root
-        .corpora()
-        .filter(|corpus| corpus.corpus_name.lang == lang)
-        .filter(|corpus| !skip_open || !corpus.corpus_name.is_open())
-        .filter(|corpus| !skip_closed || !corpus.corpus_name.is_closed())
-        // XXX collect() here, see the impl Analysed block comment
-        .flat_map(|corpus| corpus.into_analysed().files().collect::<Vec<_>>())
-        .collect();
+    let (root, files) = determine_root_and_files(root, files, skip_open, skip_closed, &lang)?;
 
     let nfiles = files.len();
-    println!("korp_mono starting, {nfiles} files to process...");
+    print!("korp_mono: {lang} ");
+    match (skip_open, skip_closed) {
+        (false, false) => print!("(both open and closed)"),
+        (false, true) => print!("(only open - closed skipped)"),
+        (true, false) => print!("(only closed - open skipped)"),
+        (true, true) => unreachable!("should have already bailed above"),
+    }
+    println!(" {nfiles} files to process...");
 
 
     let indicatif_layer = IndicatifLayer::new();
@@ -493,6 +620,10 @@ fn main() -> anyhow::Result<()> {
         //println!("korp-mono-rs starting, {nfiles} files to process...");
     }
 
+    let generator_fst = generator_fst
+        .or_else(|| gtcorpusutil::find_lang_resource(&lang, "generator-gt-norm.hfstol"))
+        .ok_or_else(|| anyhow::anyhow!("no generator-gt-norm.hfstol found for lang {lang}"))?;
+
     files
         .into_par_iter()
         .filter_map(|path| read_to_string(path))
@@ -501,8 +632,15 @@ fn main() -> anyhow::Result<()> {
         .filter_map(|(path, doc)| convert_document(path, doc))
         .map(|(path, doc)| (gtcorpusutil::KorpMonoFilePath::from(path), doc))
         .filter_map(|(path, korp_mono_file)| write_korpmono_file(path, korp_mono_file))
-        //.filter_map(|path| gen_missing_baseforms(tx.clone(), path))
+        //.filter_map(|path| gen_missing_baseforms(path, processor))
         .for_each(|_| {});
+
+    println!("generating missing baseforms...");
+    // Separate step for generating missing baseforms, as the fst lookups
+    // are not thread safe. It's probably fast enough without being
+    // parallell anyway.
+    let processor = korp_mono_fill_gen::Processor::new(generator_fst)?;
+    generate_missing_baseforms(root, &lang, processor);
 
     //pb1.abandon();
     //pb2.abandon();
